@@ -20,21 +20,23 @@ import inspect
 import threading
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from . import _hooks, _registry, _signature
 from ._provider import Provider
 
 _UNSET = object()
 
+_LockT = TypeVar("_LockT", threading.Lock, asyncio.Lock)
 
-class _BaseFunctionSingleton:
+
+class _BaseFunctionSingleton(Generic[_LockT]):
+    LOCK_METHOD: type[_LockT]
+    _lock: _LockT
+
     def __init__(self, fn: Callable[..., Any], provider: Provider) -> None:
         self._fn = fn
-        self._provider = provider
-        self._created: float | None = None
-        self._torn_down = False
-        self._value: Any = _UNSET
+        self._reset()
         self._construction_kwargs: dict[str, Any] = {}
         self._hooks = _hooks.HookRegistry()
         self.__name__ = getattr(fn, "__name__", "singleton")
@@ -61,6 +63,7 @@ class _BaseFunctionSingleton:
         self._torn_down = False
         self._value = _UNSET
         self._construction_kwargs = {}
+        self._lock = self.LOCK_METHOD()
 
     def _existing(self, kwargs: dict[str, Any]) -> Any:
         """Returns the cached value if already created, else _UNSET.
@@ -88,14 +91,8 @@ class _BaseFunctionSingleton:
         return True
 
 
-class SyncFunctionSingleton(_BaseFunctionSingleton):
-    def __init__(self, fn: Callable[..., Any], provider: Provider) -> None:
-        super().__init__(fn, provider)
-        self._lock = threading.Lock()
-
-    def _reset(self) -> None:
-        super()._reset()
-        self._lock = threading.Lock()
+class SyncFunctionSingleton(_BaseFunctionSingleton[threading.Lock]):
+    LOCK_METHOD = threading.Lock
 
     def __call__(self, **kwargs: Any) -> Any:
         existing = self._existing(kwargs)
@@ -119,14 +116,8 @@ class SyncFunctionSingleton(_BaseFunctionSingleton):
         _hooks.run_sync(self._hooks.after_end)
 
 
-class AsyncFunctionSingleton(_BaseFunctionSingleton):
-    def __init__(self, fn: Callable[..., Any], provider: Provider) -> None:
-        super().__init__(fn, provider)
-        self._lock = asyncio.Lock()
-
-    def _reset(self) -> None:
-        super()._reset()
-        self._lock = asyncio.Lock()
+class AsyncFunctionSingleton(_BaseFunctionSingleton[asyncio.Lock]):
+    LOCK_METHOD = asyncio.Lock
 
     async def __call__(self, **kwargs: Any) -> Any:
         existing = self._existing(kwargs)
