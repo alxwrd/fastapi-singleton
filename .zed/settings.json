@@ -1,0 +1,16 @@
+{
+  "languages": {
+    "Python": {
+      "language_servers": ["ty"],
+      "format_on_save": "off",
+      "code_actions_on_format": {
+        "source.organizeImports.ruff": true,
+      },
+      "formatter": {
+        "language_server": {
+          "name": "ruff",
+        },
+      },
+    },
+  },
+}

@@ -32,7 +32,7 @@ def test_reset_clears_registry_and_instance_state():
 
     assert _registry.all_singletons() == ()
     assert _registry.creation_order() == ()
-    assert get_value._created is False
+    assert get_value._created is None
     assert get_value() is not value
 
 

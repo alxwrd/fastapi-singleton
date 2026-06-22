@@ -16,7 +16,10 @@ MARKER = "__fastapi_singleton__"
 
 @runtime_checkable
 class _Lifecycle(Protocol):
-    _created: bool
+    #: unix timestamp set when the singleton is created, None until then.
+    #: Doubles as the creation-order sort key, so no separate list of
+    #: created singletons needs to be maintained.
+    _created: float | None
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
     def teardown(self) -> Any: ...
@@ -24,15 +27,10 @@ class _Lifecycle(Protocol):
 
 
 _singletons: list[_Lifecycle] = []
-_creation_order: list[_Lifecycle] = []
 
 
 def register(singleton: _Lifecycle) -> None:
     _singletons.append(singleton)
-
-
-def note_created(singleton: _Lifecycle) -> None:
-    _creation_order.append(singleton)
 
 
 def all_singletons() -> tuple[_Lifecycle, ...]:
@@ -40,7 +38,9 @@ def all_singletons() -> tuple[_Lifecycle, ...]:
 
 
 def creation_order() -> tuple[_Lifecycle, ...]:
-    return tuple(_creation_order)
+    created = [s for s in _singletons if s._created is not None]
+    created.sort(key=lambda s: s._created)
+    return tuple(created)
 
 
 def is_singleton(obj: Any) -> bool:
@@ -51,4 +51,3 @@ def reset() -> None:
     for singleton in _singletons:
         singleton._reset()
     _singletons.clear()
-    _creation_order.clear()

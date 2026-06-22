@@ -15,6 +15,8 @@ FastAPI class-based dependency (`Depends(Foo)`), just memoized.
 """
 
 import inspect
+import threading
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -34,29 +36,39 @@ class _ClassSingleton:
         params = [p for name, p in init_signature.parameters.items() if name != "self"]
         self.__signature__ = init_signature.replace(parameters=params)
         setattr(self, _registry.MARKER, True)
-        self._created = False
+        self._created: float | None = None
         self._torn_down = False
         self._value: Any = _UNSET
         self._construction_args: tuple[Any, ...] = ()
         self._construction_kwargs: dict[str, Any] = {}
+        self._lock = threading.Lock()
+
+    def _existing(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        if not self._created:
+            return _UNSET
+        _signature.check_no_conflict(
+            repr(self),
+            (self._construction_args, self._construction_kwargs),
+            (args, kwargs),
+        )
+        return self._value
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        if self._created:
-            _signature.check_no_conflict(
-                repr(self),
-                (self._construction_args, self._construction_kwargs),
-                (args, kwargs),
-            )
+        existing = self._existing(args, kwargs)
+        if existing is not _UNSET:
+            return existing
+        with self._lock:
+            existing = self._existing(args, kwargs)
+            if existing is not _UNSET:
+                return existing
+            if not args and not kwargs:
+                kwargs = _signature.self_resolve_kwargs(self._cls.__init__)
+            _hooks.run_sync(self._hooks.before_start)
+            self._value = self._cls(*args, **kwargs)
+            self._created = time.time()
+            self._construction_args = args
+            self._construction_kwargs = kwargs
             return self._value
-        if not args and not kwargs:
-            kwargs = _signature.self_resolve_kwargs(self._cls.__init__)
-        _hooks.run_sync(self._hooks.before_start)
-        self._value = self._cls(*args, **kwargs)
-        self._created = True
-        self._construction_args = args
-        self._construction_kwargs = kwargs
-        _registry.note_created(self)
-        return self._value
 
     def teardown(self) -> None:
         if not self._created or self._torn_down:
@@ -78,11 +90,12 @@ class _ClassSingleton:
         return hook
 
     def _reset(self) -> None:
-        self._created = False
+        self._created = None
         self._torn_down = False
         self._value = _UNSET
         self._construction_args = ()
         self._construction_kwargs = {}
+        self._lock = threading.Lock()
 
 
 def make_class_singleton(cls: type) -> _ClassSingleton:

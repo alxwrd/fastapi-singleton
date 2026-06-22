@@ -4,9 +4,10 @@ teardown.
 No explicit topological sort is needed: calling every registered singleton
 once is enough, because self-resolution (see _signature.py) recursively
 constructs a singleton's own dependencies before it finishes constructing
-itself. registry.note_created() is therefore appended in a valid dependency
-order (deps before dependents) for free, and reversed() is a valid teardown
-order - exactly like unwinding a stack of context managers.
+itself. Each singleton's `_created` timestamp is therefore set in a valid
+dependency order (deps before dependents) for free, and sorting by it -
+see registry.creation_order() - then reversing is a valid teardown order,
+exactly like unwinding a stack of context managers.
 """
 
 import inspect

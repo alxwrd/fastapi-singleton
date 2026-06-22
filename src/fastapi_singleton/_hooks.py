@@ -26,7 +26,9 @@ def run_sync(hooks: list[Callable[[], Any]]) -> None:
     for hook in hooks:
         result = hook()
         if inspect.isawaitable(result):
-            result.close()
+            close = getattr(result, "close", None)
+            if close is not None:
+                close()
             raise AsyncHookError(
                 f"{hook!r} is an async hook but fired on a sync singleton "
                 "lifecycle path. Use fastapi_singleton.lifespan, or make "

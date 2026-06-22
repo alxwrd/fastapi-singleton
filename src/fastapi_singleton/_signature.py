@@ -48,7 +48,7 @@ def depends_params(fn: Callable[..., Any]) -> dict[str, Callable[..., Any]]:
     signature = inspect.signature(fn)
     try:
         hints = typing.get_type_hints(fn, include_extras=True)
-    except Exception:
+    except NameError:
         hints = {}
     found: dict[str, Callable[..., Any]] = {}
     for name, param in signature.parameters.items():
