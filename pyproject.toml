@@ -38,6 +38,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
+    "uvicorn>=0.30",
 ]
 
 [tool.poe.tasks]
@@ -51,6 +52,10 @@ all = ["format", "lint", "check", "test"]
 _check-format = "ruff format --check"
 _check-sort = "ruff check --select I"
 ci = ["_check-format", "_check-sort", "lint", "check", "test"]
+
+[tool.poe.tasks.example]
+cmd = "uvicorn example.main:app --reload"
+help = "Run the example app from README.md's ConnectionPool walkthrough"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

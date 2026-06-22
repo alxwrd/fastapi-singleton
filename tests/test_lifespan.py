@@ -4,8 +4,7 @@ from typing import Annotated
 import pytest
 from fastapi import Depends
 
-from fastapi_singleton import lifespan as singleton_lifespan
-from fastapi_singleton import singleton
+from fastapi_singleton import lifespan, singleton
 
 
 @pytest.mark.asyncio
@@ -22,7 +21,7 @@ async def test_eager_startup_constructs_dependencies_before_dependents():
         events.append("b")
         return "b-value"
 
-    async with singleton_lifespan(None):
+    async with lifespan(None):
         assert events == ["a", "b"]
 
 
@@ -40,7 +39,7 @@ async def test_teardown_runs_in_reverse_creation_order():
         yield "b-value"
         events.append("b-teardown")
 
-    async with singleton_lifespan(None):
+    async with lifespan(None):
         pass
 
     assert events == ["b-teardown", "a-teardown"]
@@ -58,7 +57,7 @@ async def test_already_created_singleton_is_not_recreated_on_startup():
     get_value()
     assert events == ["create"]
 
-    async with singleton_lifespan(None):
+    async with lifespan(None):
         pass
 
     assert events == ["create"]
@@ -74,7 +73,7 @@ async def test_teardown_runs_even_if_app_body_raises():
         events.append("teardown")
 
     with pytest.raises(RuntimeError):
-        async with singleton_lifespan(None):
+        async with lifespan(None):
             raise RuntimeError("boom")
 
     assert events == ["teardown"]
@@ -92,7 +91,7 @@ async def test_composes_with_a_user_defined_lifespan():
 
     @asynccontextmanager
     async def app_lifespan(app):
-        async with singleton_lifespan(app):
+        async with lifespan(app):
             events.append("user-startup")
             yield
             events.append("user-shutdown")

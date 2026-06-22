@@ -33,36 +33,35 @@ def test_eager_creation_function_form_and_shared_instance_across_requests():
         assert r1.json() == r2.json()
 
 
-def test_eager_creation_class_form_and_teardown_order():
+def test_eager_creation_class_depending_on_async_pool_and_teardown_order():
+    """A class singleton (sync, __init__-only) depending on an async,
+    teardown-capable function singleton - the recommended composition for
+    a connection pool: the class holds config, the function does the real
+    (possibly async) resource setup and teardown."""
     events = []
 
     @singleton
-    def get_settings():
-        events.append("settings-create")
-        yield {"dsn": "x"}
-        events.append("settings-teardown")
+    class Settings:
+        def __init__(self):
+            events.append("settings-init")
+            self.dsn = "x"
 
     @singleton
-    class ConnectionPool:
-        def __init__(self, settings: Annotated[dict, Depends(get_settings)]):
-            self.settings = settings
-            events.append("pool-init")
+    async def get_pool(settings: Annotated[Settings, Depends(Settings)]):
+        events.append("pool-pre-yield")
+        yield {"dsn": settings.dsn}
+        events.append("pool-post-yield")
 
-        def __call__(self):
-            events.append("pool-pre-yield")
-            yield self
-            events.append("pool-post-yield")
-
-    @ConnectionPool.before_start
+    @get_pool.before_start
     def before_start():
         events.append("hook:before_start")
 
-    @ConnectionPool.after_end
+    @get_pool.after_end
     def after_end():
         events.append("hook:after_end")
 
     app = FastAPI(lifespan=lifespan)
-    pool_dependency = Annotated[ConnectionPool, Depends(ConnectionPool())]
+    pool_dependency = Annotated[dict, Depends(get_pool)]
 
     @app.get("/id")
     def read_id(pool: pool_dependency):
@@ -70,9 +69,8 @@ def test_eager_creation_class_form_and_teardown_order():
 
     with TestClient(app) as client:
         assert events == [
-            "settings-create",
+            "settings-init",
             "hook:before_start",
-            "pool-init",
             "pool-pre-yield",
         ]
         r1 = client.get("/id")
@@ -80,13 +78,11 @@ def test_eager_creation_class_form_and_teardown_order():
         assert r1.json() == r2.json()
 
     assert events == [
-        "settings-create",
+        "settings-init",
         "hook:before_start",
-        "pool-init",
         "pool-pre-yield",
         "pool-post-yield",
         "hook:after_end",
-        "settings-teardown",
     ]
 
 

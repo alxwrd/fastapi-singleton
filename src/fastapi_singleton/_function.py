@@ -32,6 +32,7 @@ class _BaseFunctionSingleton:
         self._created = False
         self._torn_down = False
         self._value: Any = _UNSET
+        self._construction_kwargs: dict[str, Any] = {}
         self._hooks = _hooks.HookRegistry()
         self.__name__ = getattr(fn, "__name__", "singleton")
         self.__doc__ = fn.__doc__
@@ -56,17 +57,22 @@ class _BaseFunctionSingleton:
         self._created = False
         self._torn_down = False
         self._value = _UNSET
+        self._construction_kwargs = {}
 
 
 class SyncFunctionSingleton(_BaseFunctionSingleton):
     def __call__(self, **kwargs: Any) -> Any:
         if self._created:
+            _signature.check_no_conflict(
+                repr(self), ((), self._construction_kwargs), ((), kwargs)
+            )
             return self._value
         if not kwargs:
             kwargs = _signature.self_resolve_kwargs(self._fn)
         _hooks.run_sync(self._hooks.before_start)
         self._value = self._provider.create(**kwargs)
         self._created = True
+        self._construction_kwargs = kwargs
         _registry.note_created(self)
         return self._value
 
@@ -82,12 +88,16 @@ class SyncFunctionSingleton(_BaseFunctionSingleton):
 class AsyncFunctionSingleton(_BaseFunctionSingleton):
     async def __call__(self, **kwargs: Any) -> Any:
         if self._created:
+            _signature.check_no_conflict(
+                repr(self), ((), self._construction_kwargs), ((), kwargs)
+            )
             return self._value
         if not kwargs:
-            kwargs = _signature.self_resolve_kwargs(self._fn)
+            kwargs = await _signature.async_self_resolve_kwargs(self._fn)
         await _hooks.run_async(self._hooks.before_start)
         self._value = await self._provider.create(**kwargs)
         self._created = True
+        self._construction_kwargs = kwargs
         _registry.note_created(self)
         return self._value
 

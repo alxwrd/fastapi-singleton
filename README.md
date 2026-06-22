@@ -32,27 +32,24 @@ from fastapi_singleton import singleton, lifespan
 
 
 @singleton
-def get_settings():
-    return Settings()
+class Settings:
+    def __init__(self):
+        self.dsn = "postgresql://localhost/app"
 
 
 @singleton
-class ConnectionPool:
-    def __init__(self, settings: Annotated[Settings, Depends(get_settings)]):
-        self.settings = settings
-        self.pool = create_pool(settings.dsn)
-
-    def __call__(self):
-        yield self.pool
-        self.pool.close()
+async def get_pool(settings: Annotated[Settings, Depends(Settings)]):
+    pool = await create_pool(settings.dsn)
+    yield pool
+    await pool.close()
 
 
-@ConnectionPool.before_start
+@get_pool.before_start
 def log_pool_starting():
     logger.info("opening connection pool")
 
 
-@ConnectionPool.after_end
+@get_pool.after_end
 def log_pool_closed():
     logger.info("connection pool closed")
 
@@ -61,7 +58,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/users/{user_id}")
-def read_user(pool: Annotated[Pool, Depends(ConnectionPool())], user_id: int):
+def read_user(pool: Annotated[Pool, Depends(get_pool)], user_id: int):
     return pool.fetch_user(user_id)
 ```
 
@@ -96,9 +93,9 @@ def get_other():
     return Other()
 ```
 
-Singletons can depend on other singletons (or on regular request-scoped
-dependencies) the same way any FastAPI dependency does, by declaring them
-with `Depends` in the constructor or function signature:
+Singletons can depend on other singletons the same way any FastAPI
+dependency does, by declaring them with `Depends` in the constructor or
+function signature:
 
 ```python
 @singleton
@@ -106,6 +103,26 @@ class Connection:
     def __init__(self, other: Annotated[Other, Depends(get_other)]):
         self.other = other
 ```
+
+A class singleton's `__init__` is the constructor, plain and simple -
+`Depends(Connection)` calls it exactly once, the same way any FastAPI
+class-based dependency works. `__init__` can never be `async def` in
+Python, so a class singleton can't do real async setup itself - if you need
+that (an async connection pool, an `await`-based client, anything with
+teardown), write it as a function singleton instead and have your class
+depend on it, the same way `Connection` depends on `get_other` above.
+
+A singleton can't depend on a regular, request-scoped dependency - there's
+no request to resolve it from when the singleton is constructed eagerly at
+startup, or directly in plain Python. `@singleton`-ing something that
+depends on non-singleton `Depends(...)` raises an error rather than silently
+resolving it once and reusing stale data on every later request.
+
+A singleton is also constructed exactly once: calling it again with the
+same arguments it was first constructed with is a no-op (this is what lets
+FastAPI re-resolve a singleton's own `Depends`-declared dependencies on
+every request without recreating anything), but calling it again with
+genuinely different arguments raises rather than silently ignoring them.
 
 ## Teardown with generators
 
@@ -203,10 +220,10 @@ same process means they'd share singleton state, including teardown. If
 you're testing code that uses singletons, reset the registry between tests:
 
 ```python
-from fastapi_singleton import testing
+from fastapi_singleton import reset
 
 
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    testing.reset()
+    reset()
 ```

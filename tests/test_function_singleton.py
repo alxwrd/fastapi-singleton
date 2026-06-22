@@ -14,6 +14,57 @@ def test_plain_function_is_cached_like_lru_cache_maxsize_1():
     assert get_value() is get_value()
 
 
+def test_repeat_call_with_same_kwargs_is_a_noop():
+    @singleton
+    def get_value(option="default"):
+        return object()
+
+    a = get_value(option="first")
+    b = get_value(option="first")
+    assert a is b
+
+
+def test_repeat_call_with_conflicting_kwargs_raises():
+    @singleton
+    def get_value(option="default"):
+        return option
+
+    get_value(option="first")
+    with pytest.raises(UsageError):
+        get_value(option="second")
+
+
+def test_raises_when_an_unstable_dependency_resolves_differently_on_second_call():
+    """A singleton is meant to be constructed once. If whatever's feeding
+    its arguments isn't actually stable (e.g. it isn't itself a singleton,
+    or is otherwise misused), a second invocation that resolves to a
+    different value must raise rather than silently keep the first value or
+    silently overwrite it with the second."""
+    values = iter(["first-value", "second-value"])
+
+    def get_unstable_value():
+        return next(values)
+
+    @singleton
+    def get_thing(value=None):
+        return value
+
+    get_thing(value=get_unstable_value())
+    with pytest.raises(UsageError):
+        get_thing(value=get_unstable_value())
+
+
+@pytest.mark.asyncio
+async def test_async_repeat_call_with_conflicting_kwargs_raises():
+    @singleton
+    async def get_value(option="default"):
+        return option
+
+    await get_value(option="first")
+    with pytest.raises(UsageError):
+        await get_value(option="second")
+
+
 def test_generator_function_yields_once_then_caches_value():
     events = []
 
@@ -62,6 +113,19 @@ def test_generator_yielding_twice_raises_on_teardown():
     get_value()
     with pytest.raises(Exception):
         get_value.teardown()
+
+
+@pytest.mark.asyncio
+async def test_async_singleton_self_resolves_an_async_singleton_dependency():
+    @singleton
+    async def get_other():
+        return "other-value"
+
+    @singleton
+    async def get_thing(other: Annotated[str, Depends(get_other)]):
+        return f"thing-with-{other}"
+
+    assert await get_thing() == "thing-with-other-value"
 
 
 @pytest.mark.asyncio

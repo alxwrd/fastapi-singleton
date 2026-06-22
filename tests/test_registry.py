@@ -56,7 +56,5 @@ def test_is_singleton_recognizes_function_and_class_singletons():
 
     assert _registry.is_singleton(get_value)
     assert _registry.is_singleton(Plain)
-    # the proxy, not WithCall itself, is what's singleton-recognized
-    proxy = WithCall()
-    assert _registry.is_singleton(proxy)
+    assert _registry.is_singleton(WithCall)
     assert not _registry.is_singleton(object())

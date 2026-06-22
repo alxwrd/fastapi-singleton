@@ -1,10 +1,10 @@
 import pytest
 
-from fastapi_singleton import testing
+from fastapi_singleton import reset
 
 
 @pytest.fixture(autouse=True)
 def _reset_singleton_registry():
-    testing.reset()
+    reset()
     yield
-    testing.reset()
+    reset()

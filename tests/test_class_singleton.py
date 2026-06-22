@@ -4,10 +4,10 @@ import pytest
 from fastapi import Depends
 from fastapi.dependencies.utils import get_dependant
 
-from fastapi_singleton import singleton
+from fastapi_singleton import UsageError, singleton
 
 
-def test_class_without_call_is_a_value_singleton():
+def test_class_is_a_value_singleton():
     @singleton
     class Thing:
         def __init__(self):
@@ -18,7 +18,7 @@ def test_class_without_call_is_a_value_singleton():
     assert a is b
 
 
-def test_class_without_call_self_resolves_init_depends():
+def test_class_self_resolves_init_depends():
     @singleton
     def get_other():
         return "other-value"
@@ -32,112 +32,72 @@ def test_class_without_call_self_resolves_init_depends():
     assert conn.other == "other-value"
 
 
-def test_class_without_call_ignores_args_on_repeat_construction():
+def test_class_depends_on_other_class_resolves():
+    @singleton
+    class Other:
+        def __init__(self):
+            self.value = "other-value"
+
+    @singleton
+    class Connection:
+        def __init__(self, other: Annotated[str, Depends(Other)]):
+            self.other = other
+
+    conn = Connection()
+    assert conn.other.value == "other-value"
+
+
+def test_class_repeat_construction_with_same_args_is_a_noop():
     @singleton
     class Thing:
         def __init__(self, value="default"):
             self.value = value
 
     a = Thing(value="first")
-    b = Thing(value="second")
+    b = Thing(value="first")
     assert a is b
-    assert a.value == "first"
 
 
-@pytest.mark.asyncio
-async def test_class_with_call_yields_once_and_caches_value():
-    events = []
+def test_class_raises_on_conflicting_repeat_construction():
+    @singleton
+    class Thing:
+        def __init__(self, value="default"):
+            self.value = value
+
+    Thing(value="first")
+    with pytest.raises(UsageError):
+        Thing(value="second")
+
+
+def test_class_raises_when_an_unstable_dependency_resolves_differently():
+    values = iter(["first-value", "second-value"])
+
+    def get_unstable_value():
+        return next(values)
 
     @singleton
-    class Pool:
-        def __init__(self):
-            events.append("init")
+    class Thing:
+        def __init__(self, value=None):
+            self.value = value
 
-        def __call__(self):
-            events.append("pre-yield")
-            yield self
-            events.append("post-yield")
-
-    proxy = Pool()
-    v1 = await proxy()
-    v2 = await proxy()
-    assert v1 is v2
-    assert events == ["init", "pre-yield"]
-
-    await proxy.teardown()
-    assert events == ["init", "pre-yield", "post-yield"]
+    Thing(value=get_unstable_value())
+    with pytest.raises(UsageError):
+        Thing(value=get_unstable_value())
 
 
-def test_class_with_call_returns_same_proxy_on_repeat_calls():
-    @singleton
-    class Pool:
-        def __init__(self):
-            pass
-
-        def __call__(self):
-            yield self
-
-    assert Pool() is Pool()
-
-
-@pytest.mark.asyncio
-async def test_class_with_async_generator_call():
-    events = []
+def test_class_singleton_is_a_plain_sync_dependency_to_fastapi():
+    """A class singleton's __init__ can never be async (Python doesn't
+    support it), so Depends(SomeClass) should behave exactly like any other
+    FastAPI class-based dependency: a plain, synchronously-called
+    constructor, never awaited, never treated as a generator."""
 
     @singleton
-    class Pool:
+    class Thing:
         def __init__(self):
             pass
 
-        async def __call__(self):
-            events.append("pre-yield")
-            yield self
-            events.append("post-yield")
-
-    proxy = Pool()
-    await proxy()
-    await proxy()
-    await proxy.teardown()
-    assert events == ["pre-yield", "post-yield"]
-
-
-@pytest.mark.asyncio
-async def test_proxy_is_not_detected_as_a_generator_dependency_by_fastapi():
-    """Regression test for the core risk this package has to defeat: if
-    FastAPI thinks the proxy is a live generator dependency, it will
-    recreate/close the resource on every request instead of once."""
-
-    @singleton
-    class Pool:
-        def __init__(self):
-            pass
-
-        def __call__(self):
-            yield self
-
-    proxy = Pool()
-    dependant = get_dependant(path="/x", call=proxy)
+    dependant = get_dependant(path="/x", call=Thing)
 
     assert dependant.is_gen_callable is False
     assert dependant.is_async_gen_callable is False
-    assert dependant.is_coroutine_callable is True
-
-
-def test_class_with_call_self_resolves_init_depends_async():
-    @singleton
-    def get_other():
-        return "other-value"
-
-    @singleton
-    class Pool:
-        def __init__(self, other: Annotated[str, Depends(get_other)]):
-            self.other = other
-
-        def __call__(self):
-            yield self
-
-    import asyncio
-
-    proxy = Pool()
-    value = asyncio.run(proxy())
-    assert value.other == "other-value"
+    assert dependant.is_coroutine_callable is False

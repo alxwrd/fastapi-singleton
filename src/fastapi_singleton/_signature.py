@@ -21,6 +21,29 @@ class UsageError(RuntimeError):
     """Raised when a singleton's dependency graph can't be resolved."""
 
 
+def check_no_conflict(
+    name: str,
+    original: tuple[tuple[Any, ...], dict[str, Any]],
+    attempted: tuple[tuple[Any, ...], dict[str, Any]],
+) -> None:
+    """A singleton is constructed once; calling it again with the same
+    resolved args (e.g. FastAPI re-passing an already-cached nested
+    singleton dependency on every request) is a no-op, but calling it again
+    with genuinely different args is almost certainly a bug, not something
+    to silently ignore."""
+    attempted_args, attempted_kwargs = attempted
+    if not attempted_args and not attempted_kwargs:
+        return
+    if attempted == original:
+        return
+    raise UsageError(
+        f"{name} was already constructed with {original!r}; called again "
+        f"with different arguments {attempted!r}. A singleton is "
+        "constructed exactly once - if you need different configurations, "
+        "use separate singletons."
+    )
+
+
 def depends_params(fn: Callable[..., Any]) -> dict[str, Callable[..., Any]]:
     signature = inspect.signature(fn)
     try:
