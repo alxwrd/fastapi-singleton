@@ -80,6 +80,29 @@ async def test_teardown_runs_even_if_app_body_raises():
 
 
 @pytest.mark.asyncio
+async def test_startup_failure_tears_down_already_created_singletons():
+    """If a later singleton fails to construct during eager startup, any
+    earlier singleton that already succeeded must still be torn down rather
+    than leaking whatever it acquired."""
+    events = []
+
+    @singleton
+    def get_a():
+        yield "a-value"
+        events.append("a-teardown")
+
+    @singleton
+    def get_b(a: Annotated[str, Depends(get_a)]):
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        async with lifespan(None):
+            pass
+
+    assert events == ["a-teardown"]
+
+
+@pytest.mark.asyncio
 async def test_composes_with_a_user_defined_lifespan():
     events = []
 

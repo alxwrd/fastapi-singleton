@@ -7,9 +7,11 @@ so @singleton-decorated callables can be resolved both by FastAPI itself
 and the eager lifespan startup walk).
 """
 
+import contextlib
+import contextvars
 import inspect
 import typing
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from fastapi.params import Depends
@@ -19,6 +21,36 @@ from . import _registry
 
 class UsageError(RuntimeError):
     """Raised when a singleton's dependency graph can't be resolved."""
+
+
+#: ids of singletons currently under construction on this thread/task, used
+#: to detect a singleton depending on itself, directly or transitively.
+#: contextvars rather than a plain set: each thread gets its own context by
+#: default, and the value propagates correctly across awaits within a single
+#: asyncio task, so concurrent unrelated constructions never collide.
+_constructing: contextvars.ContextVar[frozenset[int]] = contextvars.ContextVar(
+    "_constructing", default=frozenset()
+)
+
+
+@contextlib.contextmanager
+def guard_against_cycles(singleton: Any) -> Iterator[None]:
+    """Raises UsageError if `singleton` is already being constructed further
+    up the current call stack, instead of letting construction proceed into
+    a re-acquire of its own non-reentrant lock, which would deadlock rather
+    than fail."""
+    current = _constructing.get()
+    key = id(singleton)
+    if key in current:
+        raise UsageError(
+            f"{singleton!r} depends on itself, directly or transitively. "
+            "A singleton's dependency graph must be acyclic."
+        )
+    token = _constructing.set(current | {key})
+    try:
+        yield
+    finally:
+        _constructing.reset(token)
 
 
 def check_no_conflict(

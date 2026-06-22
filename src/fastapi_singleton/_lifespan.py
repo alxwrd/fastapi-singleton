@@ -18,18 +18,29 @@ from typing import Any
 from . import _registry
 
 
-@asynccontextmanager
-async def lifespan(app: Any) -> AsyncIterator[None]:
-    for singleton in _registry.all_singletons():
-        if singleton._created:
-            continue
-        result = singleton()
+async def _teardown_all() -> None:
+    for singleton in reversed(_registry.creation_order()):
+        result = singleton.teardown()
         if inspect.isawaitable(result):
             await result
+
+
+@asynccontextmanager
+async def lifespan(app: Any) -> AsyncIterator[None]:
+    try:
+        for singleton in _registry.all_singletons():
+            if singleton._created:
+                continue
+            result = singleton()
+            if inspect.isawaitable(result):
+                await result
+    except BaseException:
+        # A later singleton failing to construct must not leak whatever
+        # earlier singletons already acquired - tear down everything that
+        # did get created before re-raising.
+        await _teardown_all()
+        raise
     try:
         yield
     finally:
-        for singleton in reversed(_registry.creation_order()):
-            result = singleton.teardown()
-            if inspect.isawaitable(result):
-                await result
+        await _teardown_all()

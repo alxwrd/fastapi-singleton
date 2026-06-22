@@ -98,15 +98,16 @@ class SyncFunctionSingleton(_BaseFunctionSingleton[threading.Lock]):
         existing = self._existing(kwargs)
         if existing is not _UNSET:
             return existing
-        with self._lock:
-            existing = self._existing(kwargs)
-            if existing is not _UNSET:
-                return existing
-            if not kwargs:
-                kwargs = _signature.self_resolve_kwargs(self._fn)
-            _hooks.run_sync(self._hooks.before_start)
-            value = self._provider.create(**kwargs)
-            return self._commit(value, kwargs)
+        with _signature.guard_against_cycles(self):
+            with self._lock:
+                existing = self._existing(kwargs)
+                if existing is not _UNSET:
+                    return existing
+                if not kwargs:
+                    kwargs = _signature.self_resolve_kwargs(self._fn)
+                _hooks.run_sync(self._hooks.before_start)
+                value = self._provider.create(**kwargs)
+                return self._commit(value, kwargs)
 
     def teardown(self) -> None:
         if not self._should_teardown():
@@ -123,15 +124,16 @@ class AsyncFunctionSingleton(_BaseFunctionSingleton[asyncio.Lock]):
         existing = self._existing(kwargs)
         if existing is not _UNSET:
             return existing
-        async with self._lock:
-            existing = self._existing(kwargs)
-            if existing is not _UNSET:
-                return existing
-            if not kwargs:
-                kwargs = await _signature.async_self_resolve_kwargs(self._fn)
-            await _hooks.run_async(self._hooks.before_start)
-            value = await self._provider.create(**kwargs)
-            return self._commit(value, kwargs)
+        with _signature.guard_against_cycles(self):
+            async with self._lock:
+                existing = self._existing(kwargs)
+                if existing is not _UNSET:
+                    return existing
+                if not kwargs:
+                    kwargs = await _signature.async_self_resolve_kwargs(self._fn)
+                await _hooks.run_async(self._hooks.before_start)
+                value = await self._provider.create(**kwargs)
+                return self._commit(value, kwargs)
 
     async def teardown(self) -> None:
         if not self._should_teardown():

@@ -57,18 +57,19 @@ class _ClassSingleton:
         existing = self._existing(args, kwargs)
         if existing is not _UNSET:
             return existing
-        with self._lock:
-            existing = self._existing(args, kwargs)
-            if existing is not _UNSET:
-                return existing
-            if not args and not kwargs:
-                kwargs = _signature.self_resolve_kwargs(self._cls.__init__)
-            _hooks.run_sync(self._hooks.before_start)
-            self._value = self._cls(*args, **kwargs)
-            self._created = time.time()
-            self._construction_args = args
-            self._construction_kwargs = kwargs
-            return self._value
+        with _signature.guard_against_cycles(self):
+            with self._lock:
+                existing = self._existing(args, kwargs)
+                if existing is not _UNSET:
+                    return existing
+                if not args and not kwargs:
+                    kwargs = _signature.self_resolve_kwargs(self._cls.__init__)
+                _hooks.run_sync(self._hooks.before_start)
+                self._value = self._cls(*args, **kwargs)
+                self._created = time.time()
+                self._construction_args = args
+                self._construction_kwargs = kwargs
+                return self._value
 
     def teardown(self) -> None:
         if not self._created or self._torn_down:

@@ -1,9 +1,11 @@
+import inspect
 from typing import Annotated
 
 import pytest
 from fastapi import Depends
 
 from fastapi_singleton import UsageError, singleton
+from fastapi_singleton._provider import Provider
 
 
 def test_plain_function_is_cached_like_lru_cache_maxsize_1():
@@ -179,6 +181,69 @@ def test_self_resolution_rejects_non_singleton_dependency():
 
     with pytest.raises(UsageError):
         get_thing()
+
+
+def test_self_dependent_singleton_raises_instead_of_deadlocking():
+    """A singleton depending on itself would otherwise try to re-acquire
+    its own non-reentrant lock mid-construction and hang forever; it must
+    raise instead. Constructed via monkeypatching because a genuine direct
+    self-reference can't be written with `Depends(get_a)` inside `get_a`'s
+    own definition - the name doesn't exist yet at that point."""
+
+    @singleton
+    def get_a(a=None):
+        return "a"
+
+    def self_referencing(a: Annotated[str | None, Depends(get_a)] = None):
+        return "a"
+
+    get_a._fn = self_referencing
+    get_a._provider = Provider(self_referencing)
+    get_a.__signature__ = inspect.signature(self_referencing)
+
+    with pytest.raises(UsageError, match="depends on itself"):
+        get_a()
+
+
+def test_mutually_dependent_singletons_raise_instead_of_deadlocking():
+    @singleton
+    def get_a(b=None):
+        return "a"
+
+    @singleton
+    def get_b(a: Annotated[str | None, Depends(get_a)] = None):
+        return "b"
+
+    def a_depends_on_b(b: Annotated[str | None, Depends(get_b)] = None):
+        return "a"
+
+    get_a._fn = a_depends_on_b
+    get_a._provider = Provider(a_depends_on_b)
+    get_a.__signature__ = inspect.signature(a_depends_on_b)
+
+    with pytest.raises(UsageError, match="depends on itself"):
+        get_a()
+
+
+@pytest.mark.asyncio
+async def test_async_mutually_dependent_singletons_raise_instead_of_deadlocking():
+    @singleton
+    async def get_a(b=None):
+        return "a"
+
+    @singleton
+    async def get_b(a: Annotated[str | None, Depends(get_a)] = None):
+        return "b"
+
+    async def a_depends_on_b(b: Annotated[str | None, Depends(get_b)] = None):
+        return "a"
+
+    get_a._fn = a_depends_on_b
+    get_a._provider = Provider(a_depends_on_b)
+    get_a.__signature__ = inspect.signature(a_depends_on_b)
+
+    with pytest.raises(UsageError, match="depends on itself"):
+        await get_a()
 
 
 @pytest.mark.asyncio
