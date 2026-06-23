@@ -8,6 +8,7 @@
         <a href="https://github.com/alxwrd/fastapi-singleton/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/alxwrd/fastapi-singleton/test.yml?branch=main&label=main"></a>
         <a href="https://pypi.python.org/pypi/fastapi-singleton"><img src="https://img.shields.io/pypi/v/fastapi-singleton.svg"></a>
         <a href="https://github.com/alxwrd/fastapi-singleton/blob/main/LICENCE"><img src="https://img.shields.io/pypi/l/fastapi-singleton.svg?"></a>
+        <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg">
     </div>
     Gives you a `@singleton` decorator that turns any
     dependency, function or class, into one shared instance per process, with
