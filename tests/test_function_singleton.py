@@ -36,6 +36,30 @@ def test_repeat_call_with_conflicting_kwargs_raises():
         get_value(option="second")
 
 
+@pytest.mark.parametrize(
+    "value_factory",
+    [
+        pytest.param(lambda: float("nan"), id="nan"),
+        pytest.param(lambda: [1, 2, 3], id="list"),
+        pytest.param(lambda: {"a": 1, "b": 2}, id="dict"),
+        pytest.param(lambda: [1, float("nan")], id="list-containing-nan"),
+        pytest.param(lambda: {"a": float("nan")}, id="dict-containing-nan"),
+    ],
+)
+def test_repeat_call_with_equal_but_distinct_value_is_not_treated_as_a_conflict(
+    value_factory,
+):
+    @singleton
+    def get_value(value=None):
+        return value
+
+    # value_factory() is called twice so each call gets its own distinct
+    # object - the point is that equal-but-not-identical values shouldn't be
+    # treated as a conflict, whether or not they're hashable or contain NaN.
+    get_value(value=value_factory())
+    get_value(value=value_factory())
+
+
 def test_raises_when_an_unstable_dependency_resolves_differently_on_second_call():
     """A singleton is meant to be constructed once. If whatever's feeding
     its arguments isn't actually stable (e.g. it isn't itself a singleton,
@@ -104,6 +128,18 @@ def test_teardown_before_creation_is_a_noop():
         yield "value"
 
     get_value.teardown()  # should not raise
+
+
+def test_calling_a_singleton_after_teardown_raises_instead_of_returning_stale_value():
+    @singleton
+    def get_value():
+        yield "value"
+
+    get_value()
+    get_value.teardown()
+
+    with pytest.raises(UsageError):
+        get_value()
 
 
 def test_generator_yielding_twice_raises_on_teardown():

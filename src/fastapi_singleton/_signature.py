@@ -10,6 +10,7 @@ and the eager lifespan startup walk).
 import contextlib
 import contextvars
 import inspect
+import math
 import typing
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -53,6 +54,34 @@ def guard_against_cycles(singleton: Any) -> Iterator[None]:
         _constructing.reset(token)
 
 
+def _values_equal(a: Any, b: Any) -> bool:
+    """Like `==`, but recurses into dicts/lists/tuples and treats two NaN
+    floats as equal to each other.
+
+    Covers the ways `==` alone is unreliable for argument values: NaN
+    follows IEEE 754, where it's never equal to anything (including
+    another NaN), and unhashable containers need their elements compared
+    individually to catch a NaN nested inside them. Without this, a repeat
+    call with semantically-unchanged arguments could look like a
+    conflicting one."""
+    if (
+        isinstance(a, float)
+        and isinstance(b, float)
+        and math.isnan(a)
+        and math.isnan(b)
+    ):
+        return True
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_values_equal(a[key], b[key]) for key in a)
+    if (
+        isinstance(a, (list, tuple))
+        and isinstance(b, (list, tuple))
+        and len(a) == len(b)
+    ):
+        return all(_values_equal(x, y) for x, y in zip(a, b))
+    return a == b
+
+
 def check_no_conflict(
     name: str,
     original: tuple[tuple[Any, ...], dict[str, Any]],
@@ -66,7 +95,7 @@ def check_no_conflict(
     attempted_args, attempted_kwargs = attempted
     if not attempted_args and not attempted_kwargs:
         return
-    if attempted == original:
+    if _values_equal(attempted, original):
         return
     raise UsageError(
         f"{name} was already constructed with {original!r}; called again "
