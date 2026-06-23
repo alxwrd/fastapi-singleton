@@ -3,7 +3,7 @@
     <p align="center"><i>
         Application-scoped dependencies for <code>fastapi</code>
     </i></p>
-    <img width="256px" src=".github/assets/three-card-trickster-768.png">
+    <img width="256px" src="https://github.com/alxwrd/fastapi-singleton/raw/main/.github/assets/three-card-trickster-768.png">
     <div align="center">
         <a href="https://github.com/alxwrd/fastapi-singleton/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/alxwrd/fastapi-singleton/test.yml?branch=main&label=main"></a>
         <a href="https://pypi.python.org/pypi/fastapi-singleton"><img src="https://img.shields.io/pypi/v/fastapi-singleton.svg"></a>
