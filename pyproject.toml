@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-singleton"
-version = "0.1.0"
+version = "0.2.0"
 description = "Application-scoped dependencies for FastAPI"
 license = "MIT"
 readme = "README.md"
@@ -17,7 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Framework :: FastAPI",
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
 ]

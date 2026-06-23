@@ -9,17 +9,10 @@
         <a href="https://pypi.python.org/pypi/fastapi-singleton"><img src="https://img.shields.io/pypi/v/fastapi-singleton.svg"></a>
         <a href="https://github.com/alxwrd/fastapi-singleton/blob/main/LICENCE"><img src="https://img.shields.io/pypi/l/fastapi-singleton.svg?"></a>
     </div>
-
-Every dependency resolved through FastAPI's `Depends` is request-scoped:
-created on each request and discarded once the response is sent. That's the
-right default for most things, but it's the wrong default for connection
-pools, HTTP clients, and anything else that's expensive to create and safe to
-share.
-
-`fastapi-singleton` gives you a `@singleton` decorator that turns any
-dependency, function or class, into one shared instance per process, with
-proper startup and shutdown hooks wired into FastAPI's `lifespan`, instead of
-leaving it to whatever a `SIGTERM` does to a `@lru_cache`d object.
+    Gives you a `@singleton` decorator that turns any
+    dependency, function or class, into one shared instance per process, with
+    proper startup and shutdown hooks wired into FastAPI's `lifespan`, instead of
+    leaving it to whatever a `SIGTERM` does to a `@lru_cache`d object.
 </div>
 
 ## Example
@@ -103,14 +96,6 @@ class Connection:
     def __init__(self, other: Annotated[Other, Depends(get_other)]):
         self.other = other
 ```
-
-A class singleton's `__init__` is the constructor, plain and simple -
-`Depends(Connection)` calls it exactly once, the same way any FastAPI
-class-based dependency works. `__init__` can never be `async def` in
-Python, so a class singleton can't do real async setup itself - if you need
-that (an async connection pool, an `await`-based client, anything with
-teardown), write it as a function singleton instead and have your class
-depend on it, the same way `Connection` depends on `get_other` above.
 
 A singleton can't depend on a regular, request-scoped dependency - there's
 no request to resolve it from when the singleton is constructed eagerly at
