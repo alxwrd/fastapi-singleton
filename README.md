@@ -10,10 +10,8 @@
         <a href="https://github.com/alxwrd/fastapi-singleton/blob/main/LICENCE"><img src="https://img.shields.io/pypi/l/fastapi-singleton.svg?"></a>
         <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg">
     </div>
-    Gives you a `@singleton` decorator that turns any
-    dependency, function or class, into one shared instance per process, with
-    proper startup and shutdown hooks wired into FastAPI's `lifespan`, instead of
-    leaving it to whatever a `SIGTERM` does to a `@lru_cache`d object.
+
+Provides a `@singleton` decorator for `Depends` with proper lifecycle hooks via `lifespan`.
 </div>
 
 ## Example
