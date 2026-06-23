@@ -106,3 +106,26 @@ def test_class_singleton_hooks_attach_to_the_wrapper():
 
     Thing()
     assert events == ["hook"]
+
+
+def test_before_end_hook_failure_still_runs_teardown_and_after_end():
+    events = []
+
+    @singleton
+    def get_value():
+        yield "value"
+        events.append("provider-teardown")
+
+    @get_value.before_end
+    def boom():
+        raise RuntimeError("boom")
+
+    @get_value.after_end
+    def after():
+        events.append("after-end")
+
+    get_value()
+    with pytest.raises(RuntimeError):
+        get_value.teardown()
+
+    assert events == ["provider-teardown", "after-end"]

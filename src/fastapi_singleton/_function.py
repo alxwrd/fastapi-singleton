@@ -71,6 +71,10 @@ class _BaseFunctionSingleton(Generic[_LockT]):
         Shared between the sync and async fast-path/locked-path checks,
         which are otherwise identical aside from await placement.
         """
+        if self._torn_down:
+            raise _signature.UsageError(
+                f"{self!r} was already torn down and cannot be called again."
+            )
         if not self._created:
             return _UNSET
         _signature.check_no_conflict(
@@ -85,10 +89,7 @@ class _BaseFunctionSingleton(Generic[_LockT]):
         return value
 
     def _should_teardown(self) -> bool:
-        if not self._created or self._torn_down:
-            return False
-        self._torn_down = True
-        return True
+        return bool(self._created) and not self._torn_down
 
 
 class SyncFunctionSingleton(_BaseFunctionSingleton[threading.Lock]):
@@ -112,9 +113,12 @@ class SyncFunctionSingleton(_BaseFunctionSingleton[threading.Lock]):
     def teardown(self) -> None:
         if not self._should_teardown():
             return
-        _hooks.run_sync(self._hooks.before_end)
-        self._provider.teardown()
-        _hooks.run_sync(self._hooks.after_end)
+        self._torn_down = True
+        try:
+            _hooks.run_sync(self._hooks.before_end)
+        finally:
+            self._provider.teardown()
+            _hooks.run_sync(self._hooks.after_end)
 
 
 class AsyncFunctionSingleton(_BaseFunctionSingleton[asyncio.Lock]):
@@ -138,11 +142,14 @@ class AsyncFunctionSingleton(_BaseFunctionSingleton[asyncio.Lock]):
     async def teardown(self) -> None:
         if not self._should_teardown():
             return
-        await _hooks.run_async(self._hooks.before_end)
-        result = self._provider.teardown()
-        if inspect.isawaitable(result):
-            await result
-        await _hooks.run_async(self._hooks.after_end)
+        self._torn_down = True
+        try:
+            await _hooks.run_async(self._hooks.before_end)
+        finally:
+            result = self._provider.teardown()
+            if inspect.isawaitable(result):
+                await result
+            await _hooks.run_async(self._hooks.after_end)
 
 
 def make_function_singleton(
